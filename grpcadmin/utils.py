@@ -114,8 +114,5 @@ def add_service_stub(include, exclude):
     service_name = os.path.split(current_dir)[1]
     service_py_file = os.path.join(current_dir, SERVICES_DIR, service_name+'.py')
     service_exist = os.path.isfile(service_py_file)
-    print(include)
-    print(exclude)
-    print(service_exist)
     if not service_exist:
         open(service_py_file, 'w').close()

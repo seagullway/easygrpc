@@ -49,17 +49,17 @@ def compile(include, exclude):
 
     compile_services(include, exclude)
 
-
-@cli.command()
-@click.option('--address', '-a', default='', type=click.STRING, help='address')
-@click.option('--max_workers', '-m', default=1, type=click.IntRange(min=1, max=128), help='number of workers')
-@click.option('--protofile', '-p', multiple=True,
-              type=click.STRING, help="Proto file. It's multiple option.")
-def server(address, max_workers, protofile):
-    """comment"""
-    click.echo(address)
-    click.echo(max_workers)
-    click.echo(protofile)
+# TODO: Change server environment
+# @cli.command()
+# @click.option('--address', '-a', default='', type=click.STRING, help='address')
+# @click.option('--max_workers', '-m', default=1, type=click.IntRange(min=1, max=128), help='number of workers')
+# @click.option('--protofile', '-p', multiple=True,
+#               type=click.STRING, help="Proto file. It's multiple option.")
+# def server(address, max_workers, protofile):
+#     """comment"""
+#     click.echo(address)
+#     click.echo(max_workers)
+#     click.echo(protofile)
 
 
 @cli.command()
