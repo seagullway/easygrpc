@@ -129,6 +129,7 @@ class GRPCEnvironment:
 
         return cls.client_class(proto_py_module, address, stub_names)
 
+    # TODO: explicit one service (not use auto wrapper)
     @property
     def services(self):
         """Service class creator.
