@@ -2,6 +2,7 @@ import os
 import re
 import time
 import inspect
+from argparse import Namespace
 from concurrent import futures
 from importlib import import_module
 
@@ -31,14 +32,42 @@ class GRPCServer(object):
     def __init__(self, proto_py_module=None, address="[::]:50051", max_workers=10, service_names=()):
 
         # server instance
-        self.services = {}
+        self._route = {}
+        self._services = {}
         self._functions = {}
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        self.server.add_insecure_port(address=address)
+        self._server = None
+        self.address = address
+        self.max_workers = max_workers
 
         # find service add function
         if proto_py_module:
             self._parse_proto_module(proto_py_module, *service_names)
+
+    @property
+    def route(self):
+        """Actual route dict.
+
+            :return: dict like:
+                {route_name:
+                    Namespace(
+                        service=service_class,
+                        add_function=add_function_from_proto_py
+                    )
+                }
+
+        """
+
+        return self.route
+
+    @property
+    def server(self):
+        """Wrapped grpc server instance [from grpcio].
+
+            :return: grpc.server instance
+
+        """
+
+        return self._server
 
     @staticmethod
     def parse_proto_file(proto_py_module, pattern, *service_names):
@@ -146,7 +175,7 @@ class GRPCServer(object):
         """
 
         for s_name, s_obj in self.parser_service_file(service_module, self._functions, *service_names):
-            self.services[s_name] = s_obj
+            self._services[s_name] = s_obj
             self.add_service(service=s_obj, need_check=False)
 
     def from_module(self, service_module, *service_names):
@@ -272,7 +301,7 @@ class GRPCServer(object):
         s_name = proto_name or service.__name__
 
         # check service name
-        if need_check and s_name in self.services:
+        if need_check and s_name in self._services:
             raise grpc.RpcError("The same service name {} is already exists.".format(s_name))
 
         # check add service function
@@ -280,7 +309,7 @@ class GRPCServer(object):
             msg = "Can't find  service add function add_{}Servicer_to_server in used proto_py_module."
             raise grpc.RpcError(msg.format(s_name))
 
-        self._functions[s_name](service(), self.server)
+        self._route[s_name] = Namespace(service=service, add_function=self._functions[s_name])
 
     def add_services(self, *services, **services_param):
         """Add user define Service to the server.
@@ -302,6 +331,27 @@ class GRPCServer(object):
         for s_name, s_obj in six.iteritems(services_param):
             self.add_service(service=s_obj, proto_name=s_name)
 
+    def create_server(self, address, max_workers):
+        """Create server instance.
+
+            :param address: server listen address;
+            :type address: str;
+            :param max_workers: workers count;
+            :type max_workers: int;
+
+            :return: configured server instance.
+
+        """
+
+        # create server instance
+        if not self._server:
+            self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
+            self._server.add_insecure_port(address=address)
+
+        # add route
+        for name, route in six.iteritems(self._route):
+            route.add_function(route.service(), self._server)
+
     def start(self, sleep_time=None):
         """Start server instance.
 
@@ -310,10 +360,11 @@ class GRPCServer(object):
 
         """
 
-        self.server.start()
+        self.create_server(address=self.address, max_workers=self.max_workers)
+        self._server.start()
 
         try:
             while True:
                 time.sleep(sleep_time or self.SERVER_TIMEOUT_SLEEP)  # one day in seconds
         except KeyboardInterrupt:
-            self.server.stop(0)
+            self._server.stop(0)
