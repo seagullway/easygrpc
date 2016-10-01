@@ -1,12 +1,13 @@
 import six
+from argparse import Namespace
 from abc import ABCMeta, abstractmethod
-from types import SimpleNamespace
 
 from .server import GRPCServer
 from .client import GRPCClient
 from .parser import GRPCParser
 
 
+# TODO: Create empty env and env from
 # TODO: Add parse messages into messages
 class GRPCEnvironment:
     """gRPC environment class.
@@ -129,7 +130,6 @@ class GRPCEnvironment:
 
         return cls.client_class(proto_py_module, address, stub_names)
 
-    # TODO: explicit one service (not use auto wrapper)
     @property
     def services(self):
         """Service class creator.
@@ -141,13 +141,13 @@ class GRPCEnvironment:
         if not self._services:
 
             # create services
-            self._services = SimpleNamespace()
+            self._services = Namespace()
             services = self.parser_class.parse_module("service", self.proto_py_module)
             actual_names = self.names or services.keys()
             for service_name, params in filter(lambda srv: srv[0] in actual_names, six.iteritems(services)):
 
                 # create server: add messages class and abstract methods
-                methods = dict(messages=SimpleNamespace(**params["messages"]))
+                methods = dict(messages=Namespace(**params["messages"]))
                 if self.add_abstract:
                     methods.update({method_name: abstractmethod(lambda *args, **kwargs: NotImplemented())
                                     for method_name in params["methods"]})
@@ -156,10 +156,6 @@ class GRPCEnvironment:
                 # create server: without abstract methods
                 else:
                     service = type(service_name, (params["service_class"],), methods)
-
-                # need only one service
-                if len(services) == 1:
-                    return service
 
                 # add new service class
                 setattr(self._services, service_name, service)
@@ -177,12 +173,12 @@ class GRPCEnvironment:
         if not self._stubs:
 
             # create stubs
-            self._stubs = SimpleNamespace()
+            self._stubs = Namespace()
             stubs = self.parser_class.parse_module("stub", self.proto_py_module)
             actual_names = self.names or stubs.keys()
             for stub_name, params in filter(lambda stb: stb[0] in actual_names, six.iteritems(stubs)):
                 # create stub
-                stub = type(stub_name, (params["stub_class"]), dict(message=SimpleNamespace(params["messages"])))
+                stub = type(stub_name, (params["stub_class"],), dict(message=Namespace(**params["messages"])))
                 setattr(self.stubs, stub_name, stub)
 
         return self._stubs
