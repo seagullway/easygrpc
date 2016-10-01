@@ -1,9 +1,11 @@
-import sys
-import inspect
+import collections
 import importlib
-
+import inspect
 import os
+import sys
+
 from grpc.tools import protoc
+
 from easygrpc.parser import GRPCParser
 from grpcadmin.service_template import ServiceTemplate
 
@@ -146,29 +148,45 @@ def get_reflection_info(module):
     return classes
 
 
+def get_should_update_service(before_service_info, actual_service_info):
+    should_update_service = collections.defaultdict(set)
+    for class_name, methods in actual_service_info.items():
+        if not before_service_info.get(class_name):
+            should_update_service[class_name] = methods
+            continue
+        for method in methods:
+            if method not in before_service_info[class_name]:
+                should_update_service[class_name].add(method)
+    return should_update_service
+
+
 def create_or_update_service(services, service_py_file, name_service_dir):
     # prepare
     # # TODO: remove this insert sys path
     sys.path.insert(1, os.getcwd())
 
-    actual_service_info = {}
+    actual_service_pb2_info = {}  # {pb2: {class_name: set of methods } }
+    actual_service_info = {}  # {class_name: set of methods }
     for service in services:
         service_pb2 = importlib.import_module("proto_py." + service + "_pb2")
         pb2_info = GRPCParser.parse_module('service', service_pb2)
         service_methods_dict = {}
         for service_name, info in pb2_info.items():
             service_methods_dict[service_name] = info['methods']
-        actual_service_info[service] = service_methods_dict
+            actual_service_pb2_info[service] = service_methods_dict
+            actual_service_info.update(service_methods_dict)
 
     # print(actual_service_info)
     service_exist = os.path.isfile(service_py_file)
     if service_exist:
         service_module = importlib.import_module("services." + name_service_dir)
-        before_service = get_reflection_info(service_module)
-        print(before_service)
+        before_service_info = get_reflection_info(service_module)  # {class_name: set of methods }
+        should_update_service = get_should_update_service(before_service_info, actual_service_info)
+        print(before_service_info)
+        print(should_update_service)
         return
     with open(service_py_file, 'w') as f:
-        f.write(ServiceTemplate.generate(actual_service_info))
+        f.write(ServiceTemplate.generate(actual_service_pb2_info))
 
 
 def add_service_stub(include, exclude):
@@ -185,7 +203,6 @@ def add_service_stub(include, exclude):
     current_dir = os.getcwd()
     service_name = os.path.split(current_dir)[1]
     service_py_file = os.path.join(current_dir, SERVICES_DIR, service_name + '.py')
-
 
     # get necessary service names
     all_services = get_all_services()
@@ -213,4 +230,7 @@ def add_service_stub(include, exclude):
 
 if __name__ == '__main__':
     add_service_stub((), ())
-    # print(dir())
+    # before = {'C': {'a', 'b'}, 'D': {'t'}}
+    # actual = {'C': {'a', 'b'}, 'D': {'t'}}
+    # r =get_should_update_service(before, actual)
+    # print(r)
