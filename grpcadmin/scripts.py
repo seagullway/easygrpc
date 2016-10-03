@@ -1,5 +1,5 @@
 import click
-from grpcadmin.utils import create_service, compile_services, add_service_stub
+from grpcadmin.utils.service_builder import ServiceBuilder
 
 
 @click.group()
@@ -17,7 +17,8 @@ def create(name):
     Example:
         $grpc-admin create example.
         This command create dirs for service "example" with stub proto file for future filling"""
-    create_service(name)
+    builder = ServiceBuilder(name)
+    builder.create_service()
 
 
 @cli.command()
@@ -47,7 +48,9 @@ def compile(include, exclude):
         $grpc-admin compile -i service1 -i service2
         This command will compile only two services: service1 and service2"""
 
-    compile_services(include, exclude)
+    builder = ServiceBuilder.create_builder()
+    builder.compile_proto_files(include, exclude)
+
 
 # TODO: Change server environment
 # @cli.command()
@@ -63,29 +66,13 @@ def compile(include, exclude):
 
 
 @cli.command()
-@click.option('--include', '-i', multiple=True, type=click.STRING,
-              help="Name of service will be compiled. It's multiple option. "
-                   "If the option is missed all services will be compiled.")
-@click.option('--exclude', '-e', multiple=True, type=click.STRING,
-              help="Name of service won't be compiled. It's multiple option.")
-def service(include, exclude):
-    """Add stubs for services
-    You can explicitly include necessary services,
-    otherwise grpc-admin will create stubs for all services in proto_buf directory.
+def routes():
+    """Add stub services into routes directory
 
     \b
     Example1:
-        $grpc-admin service
-        This command  will create stubs for all services in proto_buf directory.
+        $grpc-admin routes
+        This command  will create stubs for all services in proto_py directory."""
+    builder = ServiceBuilder.create_builder()
+    builder.create_or_update_routes()
 
-    \b
-    Example2:
-        $grpc-admin service -e service1
-        This command will create stubs for all services in proto_buf directory except for service1
-
-    \b
-    Example3:
-        $grpc-admin service -i service1 -i service2
-        This command will compile only two services: service1 and service2"""
-
-    add_service_stub(include, exclude)
