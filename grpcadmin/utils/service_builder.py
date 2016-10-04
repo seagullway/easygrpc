@@ -19,14 +19,29 @@ SERVICE_HEADER = """"""
 
 
 class ServiceBuilder(object):
+    """Service builder class.
+
+        - Simple crete instance ServiceBuilder;
+        - Create instance ServiceBuilder and check current dir;
+        - Create hierarchy of service;
+        - Compile proto files to python;
+        - Create or update services in routes directory.
+
+    """
+
     def __init__(self, name, proto_buf_dir=None, proto_py_dir=None, routes_dir=None):
-        self.name = name
+        self.name = name  # service name
         self.proto_buf_dir = proto_buf_dir or os.path.join(name, PROTO_BUF_DIR)
         self.proto_py_dir = proto_py_dir or os.path.join(name, PROTO_PY_DIR)
         self.routes_dir = routes_dir or os.path.join(name, ROUTES_DIR)
 
     @classmethod
     def create_builder(cls):
+        """Create instance ServiceBuilder and check current dir.
+
+            :return: instance of ServiceBuilder.
+
+        """
         current_dir = os.getcwd()
         name = os.path.split(current_dir)[1]
         if os.path.isdir(PROTO_BUF_DIR):
@@ -46,10 +61,8 @@ class ServiceBuilder(object):
         return cls(name, proto_buf_dir, proto_py_dir, routes_dir)
 
     def create_service(self):
-        """Creating stub dirs service
+        """Create stub dirs service.
 
-        :param name: services name
-        :type name: str
         """
         if os.path.isdir(self.name):
             raise FileNotFoundError("Directory {} already exist".format(self.name))
@@ -74,12 +87,13 @@ class ServiceBuilder(object):
 
     def compile_proto_files(self, include, exclude):
         """Compile proto files to python.
-        If "include" and "exclude" arguments are empty all services will be compiled
+        If "include" and "exclude" arguments are empty all services will be compiled.
 
-        :param include: proto files will be included
-        :type include: tuple
-        :param exclude: proto files will be excluded
-        :type exclude: tuple
+        :param include: proto files will be included;
+        :type include: tuple;
+        :param exclude: proto files will be excluded;
+        :type exclude: tuple;
+
         """
 
         all_proto_files = self._get_all_proto_files()
@@ -91,11 +105,17 @@ class ServiceBuilder(object):
         self._run_code_generator(proto_files)
 
     def create_or_update_routes(self):
+        """Create or update services in routes directory.
+
+        """
+        if not os.path.isdir(PROTO_BUF_DIR):
+            raise FileNotFoundError('You should be in directory '
+                                    'where {} and {} directories are located'.format(PROTO_PY_DIR, ROUTES_DIR))
         pb2_names = [f.split('.py')[0] for f in os.listdir(self.proto_py_dir) if
                      os.path.isfile(os.path.join(self.proto_py_dir, f)) and not f.endswith('__.py')]
 
         # Parse current pb2 modules and Fill ListServiceInfo
-        # # TODO: remove this insert sys path
+        # TODO: remove this insert sys path
         sys.path.insert(1, os.getcwd())
         list_service_info = list()
         for pb2_name in pb2_names:
@@ -114,12 +134,12 @@ class ServiceBuilder(object):
                 service_class = self._get_class_by_name(service_info.service_name, service_module)
 
                 if not service_class:
-                    # class is not present in module - so rewrite all file
+                    # class is not presented in module - so rewrite all file
                     with open(service_py_file, 'w') as f:
                         f.write(ServiceTemplate.generate(service_info))
                     continue
 
-                # class is presented so append methods if necessary
+                # class is presented - so append methods if necessary
                 presented_methods = self._get_methods_by_class(service_class)
                 should_append_methods = [m for m in service_info.methods if m not in presented_methods]
                 if not should_append_methods:
@@ -133,9 +153,10 @@ class ServiceBuilder(object):
                 f.write(ServiceTemplate.generate(service_info))
 
     def _get_all_proto_files(self):
-        """ Get all names of the services from proto_buf directory
+        """ Get all names of the services from proto_buf directory.
 
-        :return: list of service names
+        :return: list of service names.
+
         """
         # get all proto files from proto_buf dir
         proto_file_paths = [f for f in os.listdir(self.proto_buf_dir)
@@ -146,14 +167,17 @@ class ServiceBuilder(object):
         return all_proto_files
 
     def _get_necessary_proto_files(self, include, exclude, all_proto_files):
-        """Get necessary proto files from all_proto_files
+        """Get necessary proto files from all_proto_files.
 
-        :param include: proto files will be included
-        :type include: tuple
-        :param exclude: proto files will be excluded
-        :type exclude: tuple
-        :param all_proto_files: list of proto_files
-        :return: list if necessary proto files
+        :param include: proto files will be included;
+        :type include: tuple;
+        :param exclude: proto files will be excluded;
+        :type exclude: tuple;
+        :param all_proto_files: list of proto_files;
+        :type all_proto_files: list of str;
+
+        :return: list of str, list of necessary proto files.
+
         """
         services = []
         for include_service in include:
@@ -173,11 +197,11 @@ class ServiceBuilder(object):
         return services
 
     def _run_code_generator(self, proto_files):
-        """Compile proto files to python
+        """Compile proto files to python.
 
-        :param proto_files: proto files
-        :type proto_files: list of str
-        :return:
+        :param proto_files: proto files;
+        :type proto_files: list of str.
+
         """
         for name in proto_files:
             protoc.main((
@@ -189,6 +213,16 @@ class ServiceBuilder(object):
             ))
 
     def _get_class_by_name(self, class_name, module):
+        """Get class by name from module if exist else None.
+
+        :param class_name: classes name;
+        :type class_name: str;
+        :param module: module which will search;
+        :type module: import module instance;
+
+        :return: class if exist else None.
+
+        """
         members = inspect.getmembers(module)
         service_class = [m for m in members if m[0] == class_name]
         if service_class:
@@ -196,4 +230,12 @@ class ServiceBuilder(object):
         return
 
     def _get_methods_by_class(self, obj):
+        """Get set of class functions.
+
+        :param obj: class which will search;
+        :type obj: class;
+
+        :return: set of function.
+
+        """
         return {func for func in obj.__dict__.keys() if callable(getattr(obj, func)) and not func.startswith('_')}
