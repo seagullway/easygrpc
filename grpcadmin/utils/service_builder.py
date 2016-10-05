@@ -8,7 +8,6 @@ from grpc.tools import protoc
 from grpcadmin.utils.service_info import ServiceInfo
 from grpcadmin.utils.service_template import ServiceTemplate
 
-
 ENCODING = 'utf-8'
 PROTO_BUF_DIR = 'proto_buf'
 PROTO_PY_DIR = 'proto_py'
@@ -116,18 +115,20 @@ class ServiceBuilder(object):
         for pb2_name in pb2_names:
             pb2_module = importlib.import_module("{}.{}".format(self.proto_py_dir.replace('/', '.'), str(pb2_name)))
             pb2_info = GRPCParser.parse_module('service', pb2_module)
-            list_service_info = [ServiceInfo(pb2_name, s_name, info['methods']) for s_name, info in pb2_info.items()]
+            list_service_info.extend(
+                [ServiceInfo(pb2_name, s_name, info['methods']) for s_name, info in pb2_info.items()])
 
         # create or update files
         for service_info in list_service_info:
             service_py_file = os.path.join(self.routes_dir, "{}.py".format(service_info.service_name_lower))
             if os.path.isfile(service_py_file):
                 service_module = importlib.import_module("{}.{}".format(self.routes_dir.replace('/', '.'),
-                                                                        service_info.sevice_name_lower))
+                                                                        service_info.service_name_lower))
 
                 # find service class object by name
-                for _, module in inspect.getmembers(service_module, lambda obj: obj[0] == service_info.service_name):
-                    service_class = module
+                for _, member in inspect.getmembers(
+                        service_module, lambda obj: inspect.isclass(obj) and obj.__name__ == service_info.service_name):
+                    service_class = member
                     break
                 else:
                     # class is not presented in module - so rewrite all file
@@ -136,7 +137,8 @@ class ServiceBuilder(object):
                     continue
 
                 # class is presented - so append methods if necessary
-                presented_methods = {func for name, func in service_class.__dict__.items()
+                # find set of methods name in service class
+                presented_methods = {name for name, func in service_class.__dict__.items()
                                      if inspect.isfunction(func) and not name.startswith('_')}
                 should_append_methods = [m for m in service_info.methods if m not in presented_methods]
                 if not should_append_methods:
@@ -144,7 +146,6 @@ class ServiceBuilder(object):
                 with open(service_py_file, 'a') as f:
                     for method in should_append_methods:
                         f.write(ServiceTemplate.get_method(method))
-
                 continue
 
             with open(service_py_file, 'w') as f:
@@ -214,24 +215,3 @@ class ServiceBuilder(object):
                 '--grpc_python_out=./{}'.format(self.proto_py_dir),
                 './{}/{}.proto'.format(self.proto_buf_dir, name),
             ))
-
-
-# TODO: Some small refactor :)
-
-
-# depracted use .keys() with for
-# for i in dict.keys() == for i in dict
-
-
-# getmembers has predicate and you dont need create big list if you need only first value
-# you code #
-# service_class = [m for m in inspect.getmembers(module) if m[0] == class_name]
-#         if service_class:
-#             return service_class[0][1]
-# replaced #
-#  for _, module in inspect.getmembers(module, lambda obj: obj[0] == class_name):
-#    return module
-
-
-# create method that search something or do simple operation and use only once in class
-
