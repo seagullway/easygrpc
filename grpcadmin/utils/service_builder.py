@@ -1,12 +1,13 @@
-import inspect
-import sys
-
-import importlib
 import os
+import sys
+import inspect
+import importlib
+
 from easygrpc.parser import GRPCParser
 from grpc.tools import protoc
 from grpcadmin.utils.service_info import ServiceInfo
 from grpcadmin.utils.service_template import ServiceTemplate
+
 
 ENCODING = 'utf-8'
 PROTO_BUF_DIR = 'proto_buf'
@@ -42,6 +43,7 @@ class ServiceBuilder(object):
             :return: instance of ServiceBuilder.
 
         """
+
         current_dir = os.getcwd()
         name = os.path.split(current_dir)[1]
         if os.path.isdir(PROTO_BUF_DIR):
@@ -61,9 +63,8 @@ class ServiceBuilder(object):
         return cls(name, proto_buf_dir, proto_py_dir, routes_dir)
 
     def create_service(self):
-        """Create stub dirs service.
+        """Create stub dirs service."""
 
-        """
         if os.path.isdir(self.name):
             raise FileNotFoundError("Directory {} already exist".format(self.name))
 
@@ -87,66 +88,63 @@ class ServiceBuilder(object):
 
     def compile_proto_files(self, include, exclude):
         """Compile proto files to python.
-        If "include" and "exclude" arguments are empty all services will be compiled.
+            If "include" and "exclude" arguments are empty all services will be compiled.
 
-        :param include: proto files will be included;
-        :type include: tuple;
-        :param exclude: proto files will be excluded;
-        :type exclude: tuple;
+            :param include: proto files will be included;
+            :type include: tuple;
+            :param exclude: proto files will be excluded;
+            :type exclude: tuple.
 
         """
 
-        all_proto_files = self._get_all_proto_files()
-
-        # get necessary service names
-        proto_files = self._get_necessary_proto_files(include, exclude, all_proto_files)
-
-        # compile
-        self._run_code_generator(proto_files)
+        self._run_code_generator(self._get_necessary_proto_files(include, exclude, self._get_all_proto_files()))
 
     def create_or_update_routes(self):
-        """Create or update services in routes directory.
+        """Create or update services in routes directory."""
 
-        """
+        # find pb_2 names
         if not os.path.isdir(PROTO_BUF_DIR):
             raise FileNotFoundError('You should be in directory '
                                     'where {} and {} directories are located'.format(PROTO_PY_DIR, ROUTES_DIR))
-        pb2_names = [f.split('.py')[0] for f in os.listdir(self.proto_py_dir) if
+        pb2_names = [os.path.splitext(f)[0] for f in os.listdir(self.proto_py_dir) if
                      os.path.isfile(os.path.join(self.proto_py_dir, f)) and not f.endswith('__.py')]
 
         # Parse current pb2 modules and Fill ListServiceInfo
         # TODO: remove this insert sys path
         sys.path.insert(1, os.getcwd())
-        list_service_info = list()
+        list_service_info = []
         for pb2_name in pb2_names:
-            pb2_module = importlib.import_module(self.proto_py_dir.replace('/', '.') + "." + str(pb2_name))
+            pb2_module = importlib.import_module("{}.{}".format(self.proto_py_dir.replace('/', '.'), str(pb2_name)))
             pb2_info = GRPCParser.parse_module('service', pb2_module)
-            for service_name, info in pb2_info.items():
-                list_service_info.append(ServiceInfo(pb2_name, service_name, info['methods']))
+            list_service_info = [ServiceInfo(pb2_name, s_name, info['methods']) for s_name, info in pb2_info.items()]
 
         # create or update files
         for service_info in list_service_info:
-            service_py_file = os.path.join(self.routes_dir, service_info.sevice_name_lower + '.py')
-            service_exist = os.path.isfile(service_py_file)
-            if service_exist:
-                service_module = importlib.import_module(
-                    self.routes_dir.replace('/', '.') + "." + service_info.sevice_name_lower)
-                service_class = self._get_class_by_name(service_info.service_name, service_module)
+            service_py_file = os.path.join(self.routes_dir, "{}.py".format(service_info.service_name_lower))
+            if os.path.isfile(service_py_file):
+                service_module = importlib.import_module("{}.{}".format(self.routes_dir.replace('/', '.'),
+                                                                        service_info.sevice_name_lower))
 
-                if not service_class:
+                # find service class object by name
+                for _, module in inspect.getmembers(service_module, lambda obj: obj[0] == service_info.service_name):
+                    service_class = module
+                    break
+                else:
                     # class is not presented in module - so rewrite all file
                     with open(service_py_file, 'w') as f:
                         f.write(ServiceTemplate.generate(service_info))
                     continue
 
                 # class is presented - so append methods if necessary
-                presented_methods = self._get_methods_by_class(service_class)
+                presented_methods = {func for name, func in service_class.__dict__.items()
+                                     if inspect.isfunction(func) and not name.startswith('_')}
                 should_append_methods = [m for m in service_info.methods if m not in presented_methods]
                 if not should_append_methods:
                     continue
                 with open(service_py_file, 'a') as f:
                     for method in should_append_methods:
                         f.write(ServiceTemplate.get_method(method))
+
                 continue
 
             with open(service_py_file, 'w') as f:
@@ -155,30 +153,33 @@ class ServiceBuilder(object):
     def _get_all_proto_files(self):
         """ Get all names of the services from proto_buf directory.
 
-        :return: list of service names.
+            :return: list of service names.
 
         """
+
         # get all proto files from proto_buf dir
-        proto_file_paths = [f for f in os.listdir(self.proto_buf_dir)
-                            if os.path.isfile(os.path.join(self.proto_buf_dir, f)) and f.endswith('.proto')]
-        all_proto_files = [os.path.splitext(f)[0] for f in proto_file_paths]
+        all_proto_files = [os.path.splitext(f)[0] for f in os.listdir(self.proto_buf_dir)
+                           if os.path.isfile(os.path.join(self.proto_buf_dir, f)) and f.endswith('.proto')]
         if not all_proto_files:
             raise FileNotFoundError("Directory {} hasn't got any proto files".format(self.proto_buf_dir))
+
         return all_proto_files
 
-    def _get_necessary_proto_files(self, include, exclude, all_proto_files):
+    @staticmethod
+    def _get_necessary_proto_files(include, exclude, all_proto_files):
         """Get necessary proto files from all_proto_files.
 
-        :param include: proto files will be included;
-        :type include: tuple;
-        :param exclude: proto files will be excluded;
-        :type exclude: tuple;
-        :param all_proto_files: list of proto_files;
-        :type all_proto_files: list of str;
+            :param include: proto files will be included;
+            :type include: tuple;
+            :param exclude: proto files will be excluded;
+            :type exclude: tuple;
+            :param all_proto_files: list of proto_files;
+            :type all_proto_files: list of str;
 
-        :return: list of str, list of necessary proto files.
+            :return: list of str, list of necessary proto files.
 
         """
+
         services = []
         for include_service in include:
             if include_service not in all_proto_files:
@@ -194,15 +195,17 @@ class ServiceBuilder(object):
                 print("Service {} can't be excluded".format(exclude_service))
         if not services:
             raise NameError('List of services is empty')
+
         return services
 
     def _run_code_generator(self, proto_files):
         """Compile proto files to python.
 
-        :param proto_files: proto files;
-        :type proto_files: list of str.
+            :param proto_files: proto files;
+            :type proto_files: list of str.
 
         """
+
         for name in proto_files:
             protoc.main((
                 '',
@@ -212,30 +215,23 @@ class ServiceBuilder(object):
                 './{}/{}.proto'.format(self.proto_buf_dir, name),
             ))
 
-    def _get_class_by_name(self, class_name, module):
-        """Get class by name from module if exist else None.
 
-        :param class_name: classes name;
-        :type class_name: str;
-        :param module: module which will search;
-        :type module: import module instance;
+# TODO: Some small refactor :)
 
-        :return: class if exist else None.
 
-        """
-        members = inspect.getmembers(module)
-        service_class = [m for m in members if m[0] == class_name]
-        if service_class:
-            return service_class[0][1]
-        return
+# depracted use .keys() with for
+# for i in dict.keys() == for i in dict
 
-    def _get_methods_by_class(self, obj):
-        """Get set of class functions.
 
-        :param obj: class which will search;
-        :type obj: class;
+# getmembers has predicate and you dont need create big list if you need only first value
+# you code #
+# service_class = [m for m in inspect.getmembers(module) if m[0] == class_name]
+#         if service_class:
+#             return service_class[0][1]
+# replaced #
+#  for _, module in inspect.getmembers(module, lambda obj: obj[0] == class_name):
+#    return module
 
-        :return: set of function.
 
-        """
-        return {func for func in obj.__dict__.keys() if callable(getattr(obj, func)) and not func.startswith('_')}
+# create method that search something or do simple operation and use only once in class
+

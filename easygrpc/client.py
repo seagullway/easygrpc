@@ -1,8 +1,10 @@
 import os
 import re
 import inspect
+import operator
 from types import SimpleNamespace
 from importlib import import_module
+from functools import update_wrapper, partial
 
 import six
 import grpc
@@ -10,6 +12,88 @@ import grpc
 from .parser import GRPCParser
 
 
+# class EasyStubMethod(object):
+#
+#     def __init__(self, method):
+#         self.method = method
+#
+#     def __call__(self, *args, **kwargs):
+#         print("my_call")
+#         return self.method.__call__(*args, **kwargs)
+
+
+class StubWrapper(object):
+    """Stub wrapper add hook to Stub class methods."""
+
+    def __init__(self, wrapped_stub, client, request_hook=None):
+        self.wrapped_stub = wrapped_stub
+        self._client = client
+        self._request_hook = request_hook
+        update_wrapper(self, wrapped_stub)
+
+    @staticmethod
+    def use_request_hook(self, item, client, request_hook):
+        """Wrapper function to use request hook with grpc channel method.
+
+            :param self: active Stub instance;
+            :type self: instance of Stub class;
+            :param item: Stub class name;
+            :type item: str;
+            :param client: GRPCClient object;
+            :type client: instance of the GRPCClient class;
+            :param request_hook: request hook function with signature:
+                - client: client object;
+                - method: stub request send method;
+                *args, **kwargs - standard method use parameters;
+
+            :return: Stub class with request hook function.
+
+        """
+
+        obj = object.__getattribute__(self, item)
+
+        # only service methods
+        if isinstance(obj, grpc.UnaryUnaryMultiCallable):
+
+            def wrapper_hook(*args, **kwargs):
+
+                hook = kwargs.get("request_hook") and kwargs.pop("request_hook") or request_hook
+
+                # use hook function
+                if hook:
+                    update_wrapper(hook, wrapper_hook)
+                    return hook(client, obj, *args, **kwargs)
+
+                # use standard obj
+                else:
+
+                    return obj(*args, **kwargs)
+
+            return wrapper_hook
+
+        return obj
+
+    def __call__(self, active_stub, *args, **kwargs):
+        """Redefine __getattr__ method in grpc generate Stub class.
+
+            :param active_stub: self in wrapped Stub class;
+            :type active_stub: Stub class instance;
+
+            :return: Stub class instance with use_request_hook instead __getattr__ method.
+
+        """
+
+        # create special hook
+        getattr_hook = partial(StubWrapper.use_request_hook, client=self._client, request_hook=self._request_hook)
+        setattr(self.wrapped_stub, "__getattribute__", lambda obj, item: getattr_hook(obj, item))
+
+        return self.wrapped_stub(active_stub, *args, **kwargs)
+
+    def __repr__(self):
+        return "wrapper stub: {}".format(self.wrapped_stub)
+
+
+# TODO: Add reconfigure server
 # TODO: Add special search methods method (check change server config)
 class GRPCClient(object):
     """gRPC client class.
@@ -27,6 +111,8 @@ class GRPCClient(object):
     HANDLER_SEARCH_PATTERN = "(?P<name>.*)Stub"
     PROTO_PY_FOLDER = "proto_py"
 
+    request_hook = None
+
     def __init__(self, proto_py_module=None, address=None, stub_names=()):
 
         # client instance
@@ -38,6 +124,13 @@ class GRPCClient(object):
 
         elif stub_names:
             raise grpc.RpcError("Expected proto_py_module to filter use stub_names, but got only stub_names!")
+
+    def add_request_hook(self, request_hook):
+        """"""
+
+        self.request_hook = request_hook
+
+        return self
 
     @staticmethod
     def parse_proto_file(proto_py_module, pattern, *stub_names):
@@ -137,11 +230,7 @@ class GRPCClient(object):
 
         """
 
-        if include:
-            deleted_stubs = (set(self.stubs) - set(stub_names))
-        else:
-            deleted_stubs = (set(self.stubs) - set(stub_names))
-        for s_name in deleted_stubs:
+        for s_name in [operator.and_, operator.sub][include](set(self.stubs), set(stub_names)):
             delattr(self, s_name)
 
         return self
@@ -189,7 +278,8 @@ class GRPCClient(object):
             raise grpc.RpcError("The same stub name {} is already exists.".format(s_name))
 
         # add stub
-        setattr(self, s_name, self.stubs[s_name](self.channel))
+        wrapper_stub = StubWrapper(self.stubs[s_name], client=self, request_hook=self.request_hook)
+        setattr(self, s_name, wrapper_stub(self.channel))
 
     def add_stubs(self, *stubs, **stubs_param):
         """Add user define stub to the client.

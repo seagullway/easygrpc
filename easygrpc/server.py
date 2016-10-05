@@ -2,7 +2,7 @@ import os
 import re
 import time
 import inspect
-from argparse import Namespace
+import operator
 from concurrent import futures
 from importlib import import_module
 
@@ -10,9 +10,9 @@ import six
 import grpc
 
 
-# TODO: Add filter method
 # TODO: Add load const from config
 # TODO: Add service methods map ("ops" --> "SendMessage")
+# TODO: Add special route class (can change server route after config)
 class GRPCServer(object):
     """gRPC server class.
 
@@ -24,6 +24,8 @@ class GRPCServer(object):
 
     """
 
+    DEFAULT_ADDRESS = "[::]:50051"
+    DEFAULT_MAX_WORKERS = 10
     SERVICE_FOLDER = "services"
     PROTO_PY_FOLDER = "proto_py"
     HANDLER_SEARCH_PATTERN = "add_(?P<name>.*)Servicer_to_server"
@@ -33,8 +35,6 @@ class GRPCServer(object):
 
         # server instance
         self._route = {}
-        self._services = {}
-        self._functions = {}
         self._server = None
         self.address = address
         self.max_workers = max_workers
@@ -49,7 +49,7 @@ class GRPCServer(object):
 
             :return: dict like:
                 {route_name:
-                    Namespace(
+                    dict(
                         service=service_class,
                         add_function=add_function_from_proto_py
                     )
@@ -57,7 +57,8 @@ class GRPCServer(object):
 
         """
 
-        return self.route
+        return {name: route for name, route in six.iteritems(self._route)
+                if route.get("add_function") and route.get("service")}
 
     @property
     def server(self):
@@ -106,9 +107,9 @@ class GRPCServer(object):
 
         # get stubs
         for s_name, s_obj in self.parse_proto_file(proto_py_module, self.HANDLER_SEARCH_PATTERN, *service_names):
-            if s_name in self._functions:
+            if s_name in self.route and self.route[s_name]["add_function"]:
                 raise grpc.RpcError("The same service name '{}' is already exists.".format(s_name))
-            self._functions[s_name] = s_obj
+            self._route.setdefault(s_name, {})["add_function"] = s_obj
 
     def from_proto_module(self, proto_py_module, *service_names):
         """Add service add function from proto pt module.
@@ -142,13 +143,11 @@ class GRPCServer(object):
         return self
 
     @staticmethod
-    def parser_service_file(service_module, functions, *service_names):
+    def parser_service_file(service_module, *service_names):
         """Parse service module to find user define Service.
 
             :param service_module: module with user define service;
             :type service_module: import module isinstance;
-            :param functions: service_add_function dict:
-            :type functions: dict like {clear_function_name: function_object}
             :param service_names: added services names;
             :type service_names: tuple wit str;
 
@@ -157,7 +156,7 @@ class GRPCServer(object):
         """
 
         for s_name, s_obj in six.iteritems(service_module.__dict__):
-            if s_name in functions:
+            if inspect.isclass(s_obj):
                 if service_names:
                     if s_name in service_names:
                         yield s_name, s_obj
@@ -174,9 +173,8 @@ class GRPCServer(object):
 
         """
 
-        for s_name, s_obj in self.parser_service_file(service_module, self._functions, *service_names):
-            self._services[s_name] = s_obj
-            self.add_service(service=s_obj, need_check=False)
+        for s_name, s_obj in self.parser_service_file(service_module, *service_names):
+            self._route.setdefault(s_name, {})["service"] = s_obj
 
     def from_module(self, service_module, *service_names):
         """Add service class from object service module.
@@ -279,9 +277,10 @@ class GRPCServer(object):
 
         """
 
-        # TODO: Need to find and change register service in grpc server
+        for s_name in [operator.and_, operator.sub][include](set(self._route), set(service_names)):
+            self._route.pop(s_name)
 
-        raise NotADirectoryError("Create in next package version")
+        return self
 
     def add_service(self, service, proto_name=None, need_check=True):
         """Add user define service to the server.
@@ -301,15 +300,10 @@ class GRPCServer(object):
         s_name = proto_name or service.__name__
 
         # check service name
-        if need_check and s_name in self._services:
+        if need_check and s_name in self._route and self.route[s_name]["service"]:
             raise grpc.RpcError("The same service name {} is already exists.".format(s_name))
 
-        # check add service function
-        if s_name not in self._functions:
-            msg = "Can't find  service add function add_{}Servicer_to_server in used proto_py_module."
-            raise grpc.RpcError(msg.format(s_name))
-
-        self._route[s_name] = Namespace(service=service, add_function=self._functions[s_name])
+        self._route[s_name]["service"] = service
 
     def add_services(self, *services, **services_param):
         """Add user define Service to the server.
@@ -331,7 +325,7 @@ class GRPCServer(object):
         for s_name, s_obj in six.iteritems(services_param):
             self.add_service(service=s_obj, proto_name=s_name)
 
-    def create_server(self, address, max_workers):
+    def config_server(self, address=None, max_workers=None):
         """Create server instance.
 
             :param address: server listen address;
@@ -343,24 +337,37 @@ class GRPCServer(object):
 
         """
 
+        # address and max workers
+        self.address = address or self.address or self.DEFAULT_ADDRESS
+        self.max_workers = max_workers or self.max_workers or self.DEFAULT_MAX_WORKERS
+        if not all((self.address, self.max_workers)):
+            msg = "To start server expected address and max_workers, but get address: '{}' and max_workers: '{}'"
+            raise grpc.RpcError(msg.format(self.address, self.max_workers))
+
         # create server instance
         if not self._server:
-            self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-            self._server.add_insecure_port(address=address)
+            self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.max_workers))
+            self._server.add_insecure_port(address=self.address)
 
         # add route
-        for name, route in six.iteritems(self._route):
-            route.add_function(route.service(), self._server)
+        for name, route in six.iteritems(self.route):
+            route["add_function"](route["service"](), self._server)
 
-    def start(self, sleep_time=None):
+        return self
+
+    def start(self, address=None, max_workers=None, sleep_time=None):
         """Start server instance.
 
             :param sleep_time: sleep server time;
-            :type sleep_time: int.
+            :type sleep_time: int;
+            :param address: server listen address;
+            :type address: str;
+            :param max_workers: workers count;
+            :type max_workers: int.
 
         """
 
-        self.create_server(address=self.address, max_workers=self.max_workers)
+        self.config_server(address=address, max_workers=max_workers)
         self._server.start()
 
         try:
