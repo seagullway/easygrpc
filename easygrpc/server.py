@@ -368,8 +368,3 @@ class GRPCServer(object):
                 time.sleep(sleep_time or self.SERVER_TIMEOUT_SLEEP)  # one day in seconds
         except KeyboardInterrupt:
             self._server.stop(0)
-
-
-from .. import grpcadmin
-print(grpcadmin)
-
