@@ -51,7 +51,7 @@ class ServiceTemplate(object):
         """
 
         return ('    def {}(self, request, context):\n'
-                '        \"\"\"\"\"\"\n'
+                '        \"\"\"\"\"\"\n\n'
                 '        raise NotImplementedError()\n\n').format(method_name)
 
     @staticmethod
