@@ -36,7 +36,8 @@ class ServiceTemplate(object):
 
         """
 
-        return 'class {0}(services.{0}):\n\n'.format(service_name)
+        return ('class {0}(services.{0}):\n'
+                '    \"\"\"\"\"\"\n\n').format(service_name)
 
     @staticmethod
     def get_method(method_name):
@@ -50,6 +51,7 @@ class ServiceTemplate(object):
         """
 
         return ('    def {}(self, request, context):\n'
+                '        \"\"\"\"\"\"\n'
                 '        raise NotImplementedError()\n\n').format(method_name)
 
     @staticmethod

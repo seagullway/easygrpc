@@ -14,7 +14,7 @@ PROTO_PY_DIR = 'proto_py'
 ROUTES_DIR = 'routes'
 INIT_FILE = '__init__.py'
 PROTO_FORMAT = '.proto'
-PROTO_TEMPLATE = 'syntax="proto2";\n'
+PROTO_TEMPLATE = 'syntax="proto3";\n\npackage {};\n'
 SERVICE_HEADER = """"""
 
 
@@ -68,7 +68,7 @@ class ServiceBuilder(object):
         # create proto_buf dir with proto file
         os.makedirs(os.path.join(name_path, PROTO_BUF_DIR))
         with open(os.path.join(name_path, PROTO_BUF_DIR, self.name + PROTO_FORMAT), 'w', encoding=ENCODING) as f:
-            f.write(PROTO_TEMPLATE)
+            f.write(PROTO_TEMPLATE.format(self.name))
 
         # create package proto_py
         os.makedirs(os.path.join(name_path, PROTO_PY_DIR))
@@ -120,9 +120,10 @@ class ServiceBuilder(object):
                     service_class = member
                     break
                 else:
-                    # class is not presented in module - so rewrite all file
-                    with open(service_py_file, 'w') as f:
-                        f.write(ServiceTemplate.generate(service_info))
+                    # class is not presented in module - so do nothing for current service
+                    print('WARNING. Service {1} has not created. '
+                          'Module {0} exists but class {1} is not presented. Remove file "routes/{0}.py" and try again'.
+                          format(service_info.service_name_lower, service_info.service_name))
                     continue
 
                 # class is presented - so append methods if necessary

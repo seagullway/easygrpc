@@ -113,6 +113,7 @@ class GRPCParser(object):
                 if type_instance == "service":
                     response, request = kwargs.get("response_serializers", {}), kwargs.get("request_deserializers", {})
                 for (service_name, method_name), serializer in chain(six.iteritems(response), six.iteritems(request)):
+                    service_name = service_name.split('.')[-1]
                     mapper_methods[service_name].add(method_name)
                     mapper_messages[service_name].add(serializer())
 
