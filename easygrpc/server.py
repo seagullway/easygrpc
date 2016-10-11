@@ -26,7 +26,7 @@ class GRPCServer(object):
 
     DEFAULT_ADDRESS = "[::]:50051"
     DEFAULT_MAX_WORKERS = 10
-    SERVICE_FOLDER = "services"
+    SERVICE_FOLDER = "routes"
     PROTO_PY_FOLDER = "proto_py"
     HANDLER_SEARCH_PATTERN = "add_(?P<name>.*)Servicer_to_server"
     SERVER_TIMEOUT_SLEEP = 60 * 60 * 24
