@@ -50,15 +50,8 @@ class ServiceBuilder(object):
             proto_py_dir = PROTO_PY_DIR
             routes_dir = ROUTES_DIR
         else:
-            proto_buf_dir = os.path.join(name, PROTO_BUF_DIR)
-            proto_py_dir = os.path.join(name, PROTO_PY_DIR)
-            routes_dir = os.path.join(name, ROUTES_DIR)
-        if not os.path.isdir(proto_buf_dir):
-            raise FileNotFoundError("You should be in service directory")
-        if not os.path.isdir(proto_py_dir):
-            raise FileNotFoundError("You should be in service directory")
-        if not os.path.isdir(routes_dir):
-            raise FileNotFoundError("You should be in service directory")
+            raise FileNotFoundError('You should be in directory where {}, {} and '
+                                    '{} directories are located'.format(PROTO_BUF_DIR, PROTO_PY_DIR, ROUTES_DIR))
         return cls(name, proto_buf_dir, proto_py_dir, routes_dir)
 
     def create_service(self):
@@ -102,14 +95,10 @@ class ServiceBuilder(object):
         """Create or update services in routes directory."""
 
         # find pb_2 names
-        if not os.path.isdir(PROTO_BUF_DIR):
-            raise FileNotFoundError('You should be in directory '
-                                    'where {} and {} directories are located'.format(PROTO_PY_DIR, ROUTES_DIR))
         pb2_names = [os.path.splitext(f)[0] for f in os.listdir(self.proto_py_dir) if
                      os.path.isfile(os.path.join(self.proto_py_dir, f)) and not f.endswith('__.py')]
 
         # Parse current pb2 modules and Fill ListServiceInfo
-        # TODO: remove this insert sys path
         sys.path.insert(1, os.getcwd())
         list_service_info = []
         for pb2_name in pb2_names:
