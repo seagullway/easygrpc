@@ -8,7 +8,8 @@ setup(
     install_requires=[
         'Click',
         'grpcio',
-        'grpcio-tools'
+        'grpcio-tools',
+        'toolz'
     ],
     entry_points='''
         [console_scripts]
