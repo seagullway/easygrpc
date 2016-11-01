@@ -12,16 +12,6 @@ import grpc
 from .parser import GRPCParser
 
 
-# class EasyStubMethod(object):
-#
-#     def __init__(self, method):
-#         self.method = method
-#
-#     def __call__(self, *args, **kwargs):
-#         print("my_call")
-#         return self.method.__call__(*args, **kwargs)
-
-
 class StubWrapper(object):
     """Stub wrapper add hook to Stub class methods."""
 
