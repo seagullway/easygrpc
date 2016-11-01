@@ -1,4 +1,4 @@
-class GRPCError(object):
+class GRPCError(BaseException):
     """gRPC global error class."""
 
 
