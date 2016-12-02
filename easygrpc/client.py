@@ -116,7 +116,14 @@ class GRPCClient(object):
             raise grpc.RpcError("Expected proto_py_module to filter use stub_names, but got only stub_names!")
 
     def add_request_hook(self, request_hook):
-        """"""
+        """Add request hook to all clients request.
+
+            :param request_hook: hook callback functions;
+            :type request_hook: callable object;
+
+            :return: GRPC client object.
+
+        """
 
         self.request_hook = request_hook
 
