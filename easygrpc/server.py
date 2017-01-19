@@ -13,6 +13,7 @@ import grpc
 # TODO: Add load const from config
 # TODO: Add service methods map ("ops" --> "SendMessage")
 # TODO: Add special route class (can change server route after config)
+# TODO: Add config max_message_length
 class GRPCServer(object):
     """gRPC server class.
 
@@ -31,13 +32,15 @@ class GRPCServer(object):
     HANDLER_SEARCH_PATTERN = "add_(?P<name>.*)Servicer_to_server"
     SERVER_TIMEOUT_SLEEP = 60 * 60 * 24
 
-    def __init__(self, proto_py_module=None, address="[::]:50051", max_workers=10, service_names=()):
+    def __init__(self, proto_py_module=None, address="[::]:50051", max_workers=10, service_names=(),
+                 max_message_length=None):
 
         # server instance
         self._route = {}
         self._server = None
         self.address = address
         self.max_workers = max_workers
+        self.max_message_length = max_message_length or 4*1024*1024
 
         # find service add function
         if proto_py_module:
@@ -347,7 +350,7 @@ class GRPCServer(object):
         # create server instance
         if not self._server:
             self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.max_workers))
-            self._server.add_insecure_port(address=self.address)
+            self._server.add_insecure_port(address=self.address, max_message_length=4*1024*1024)
 
         # add route
         for name, route in six.iteritems(self.route):

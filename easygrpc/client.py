@@ -103,11 +103,12 @@ class GRPCClient(object):
 
     request_hook = None
 
-    def __init__(self, proto_py_module=None, address=None, stub_names=()):
+    def __init__(self, proto_py_module=None, address=None, stub_names=(), max_message_length=None):
 
         # client instance
         self.stubs = {}
-        self.channel = grpc.insecure_channel(target=address or self.DEFAULT_ADDRESS)
+        self.channel = grpc.insecure_channel(target=address or self.DEFAULT_ADDRESS,
+                                             options=[('grpc.max_message_length', max_message_length or 4*1024*1024)])
 
         if proto_py_module:
             self.from_module(proto_py_module, *stub_names)
