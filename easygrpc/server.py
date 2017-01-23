@@ -328,7 +328,7 @@ class GRPCServer(object):
         for s_name, s_obj in six.iteritems(services_param):
             self.add_service(service=s_obj, proto_name=s_name)
 
-    def config_server(self, address=None, max_workers=None):
+    def config_server(self, address=None, max_workers=None, max_message_length=None):
         """Create server instance.
 
             :param address: server listen address;
@@ -350,7 +350,7 @@ class GRPCServer(object):
         # create server instance
         if not self._server:
             self._server = grpc.server(futures.ThreadPoolExecutor(max_workers=self.max_workers))
-            self._server.add_insecure_port(address=self.address, max_message_length=4*1024*1024)
+            self._server.add_insecure_port(address=self.address)
 
         # add route
         for name, route in six.iteritems(self.route):
@@ -358,19 +358,24 @@ class GRPCServer(object):
 
         return self
 
-    def start(self, address=None, max_workers=None, sleep_time=None):
+    def start(self, address=None, max_workers=None, sleep_time=None, max_message_length=None):
         """Start server instance.
 
             :param sleep_time: sleep server time;
             :type sleep_time: int;
+
             :param address: server listen address;
             :type address: str;
+
             :param max_workers: workers count;
-            :type max_workers: int.
+            :type max_workers: int;
+
+            :param max_message_length: maximum message response length;
+            :type max_message_length: int;
 
         """
 
-        self.config_server(address=address, max_workers=max_workers)
+        self.config_server(address=address, max_workers=max_workers, max_message_length=max_message_length)
         self._server.start()
 
         try:
